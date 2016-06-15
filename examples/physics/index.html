@@ -1,0 +1,41 @@
+<html>
+  <head>
+    <title>A-Frame Firebase Component - Presentation</title>
+    <script src="nunjucks-v2.3.0.min.js"></script>
+    <script src="../build.js"></script>
+  </head>
+  <body>
+    <a-scene firebase="apiKey: AIzaSyBYI5oI6riRd-cAOhE414bXSeE5YYnhRkc;
+                       authDomain: aframe-firebase-physics.firebaseapp.com;
+                       databaseURL: https://aframe-firebase-physics.firebaseio.com;
+                       storageBucket: aframe-firebase-physics.appspot.com"
+             physics>
+      <a-assets>
+        <a-mixin id="avatar-head"
+                geometry="primitive: box; depth: 0.3; height: 0.3; width: 0.3"
+                material="color: #222"></a-mixin>
+        <a-mixin id="avatar-body"
+                 geometry="primitive: cone; height: 1.5; radiusTop: 0.1; radiusBottom: 0.4"
+                 material="color: #222"></a-mixin>
+      </a-assets>
+
+      <!-- Synced avatar head. Rotates separately from body. -->
+      <a-entity id="head" mixin="avatar-head"
+                camera universal-controls
+                firebase-broadcast="componentsOnce: kinematic-body, mixin;
+                                    components: position, rotation"
+                position="0 0 0" kinematic-body></a-entity>
+
+      <!-- Objects. -->
+      <a-box id="box" color="#EC9454" dynamic-body position="0 0.5 -5" width="1" height="1"
+             depth="1" firebase-broadcast="componentsOnce: dynamic-body, geometry, material;
+                                           components: position, rotation;
+                                           shared: true"></a-box>
+
+      <!-- Background. -->
+      <a-grid rotation="-90 0 0" position="0 -1 0" height="100" width="100"
+              static-body></a-grid>
+      <a-sky color="#A1DFFF"></a-sky>
+    </a-scene>
+  </body>
+</html>

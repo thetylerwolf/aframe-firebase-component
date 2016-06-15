@@ -1,5 +1,6 @@
 require('firebase');
 var parse = require('url-parse');
+var uuid = require('uuid');
 
 if (typeof AFRAME === 'undefined') {
   throw new Error('Component attempted to register before AFRAME was available.');
@@ -12,18 +13,24 @@ var channelQueryParam = parse(location.href, true).query['aframe-firebase-channe
  */
 AFRAME.registerSystem('firebase', {
   init: function () {
+    var database;
     var sceneEl = this.sceneEl;
     // Cannot use getComputedAttribute since component not yet attached,
     // so set property defaults in this method instead of in schema.
     var config = sceneEl.getAttribute('firebase');
     var self = this;
 
+    this.broadcastingEntities = {};
+    this.clientId = uuid.v4();
+    this.entities = {};
+
+    // Get config.
     if (!(config instanceof Object)) {
       config = AFRAME.utils.styleParser.parse(config);
     }
-
     if (!config) { return; }
 
+    // Set up Firebase.
     this.channel = channelQueryParam || config.channel || 'default';
     this.firebase = firebase.initializeApp(config);
     var database = this.database = firebase.database().ref(this.channel);
@@ -32,6 +39,7 @@ AFRAME.registerSystem('firebase', {
     this.entities = {};
     this.interval = config.interval || 10;
 
+    // Firebase handlers.
     database.child('entities').once('value', function (snapshot) {
       self.handleInitialSync(snapshot.val() || {});
     });
@@ -68,7 +76,16 @@ AFRAME.registerSystem('firebase', {
     // Already added.
     if (this.entities[id] || this.broadcastingEntities[id]) { return; }
 
-    var entity = document.createElement('a-entity');
+    // Get or create entity.
+    var created;
+    var htmlId = data.id;
+    var entity;
+    if (data['firebase-broadcast'].shared && htmlId) {
+      entity = this.sceneEl.querySelector('#' + htmlId);
+    } else {
+      entity = document.createElement('a-entity');
+      created = true;
+    }
     this.entities[id] = entity;
 
     // Parent node.
@@ -78,11 +95,14 @@ AFRAME.registerSystem('firebase', {
 
     // Components.
     Object.keys(data).forEach(function setComponent (componentName) {
-      if (componentName === 'parentId') { return; }
+      // Don't sync `firebase-broadcast`, it will wipe components.
+      if (componentName === 'firebase-broadcast' || componentName === 'parentId') { return; }
       setAttribute(entity, componentName, data[componentName]);
     });
 
-    parentEl.appendChild(entity);
+    if (created) {
+      parentEl.appendChild(entity);
+    }
   },
 
   /**
@@ -138,34 +158,53 @@ AFRAME.registerSystem('firebase', {
   },
 
   /**
-   * Broadcast.
+   * Broadcast each entity, building each entity's data.
    */
   tick: function (time) {
     if (!this.firebase) { return; }
 
     var broadcastingEntities = this.broadcastingEntities;
+    var clientId = this.clientId;
     var database = this.database;
     var sceneEl = this.sceneEl;
 
+    // Interval.
     if (time - this.time < this.interval) { return; }
     this.time = time;
 
-    Object.keys(broadcastingEntities).forEach(function broadcast (id) {
+    Object.keys(broadcastingEntities).forEach(function broadcastEntity (id) {
       var el = broadcastingEntities[id];
-      var components = el.getAttribute('firebase-broadcast').components;
+      var broadcastData = el.getComputedAttribute('firebase-broadcast');
+      var components = broadcastData.components;
       var data = {};
 
+      // Keep track of explicit ID in case of shared objects.
+      data['firebase-broadcast'] = {
+        id: el.getAttribute('id'),
+        shared: broadcastData.shared
+      };
+
+      // Check if shared entity is unclaimed. Take it if not.
+      if (broadcastData.shared && !broadcastData.owner) {
+        el.setAttribute('firebase-broadcast', 'owner', clientId);
+        broadcastData.owner = clientId;
+        data['firebase-broadcast'].owner = clientId;
+      }
+
+      // Check if entity is owned by another client.
+      if (broadcastData.shared && broadcastData.owner !== clientId) { return; }
+
       // Add components to broadcast once.
-      if (!el.firebaseBroadcastOnce && el.getAttribute('firebase-broadcast').componentsOnce) {
-        components = components.concat(el.getAttribute('firebase-broadcast').componentsOnce);
+      if (!el.firebaseBroadcastOnce && broadcastData.componentsOnce) {
+        components = components.concat(broadcastData.componentsOnce);
         el.firebaseBroadcastOnce = true;
       }
 
       // Parent.
-      if (el.parentNode !== sceneEl) {
-        var broadcastData = el.parentNode.getAttribute('firebase-broadcast');
-        if (!broadcastData) { return; }  // Wait for parent to initialize.
-        data.parentId = broadcastData.id;
+      if (el.parentNode && el.parentNode !== sceneEl) {
+        var parentBroadcastData = el.parentNode.getAttribute('firebase-broadcast');
+        if (!parentBroadcastData) { return; }  // Wait for parent to initialize.
+        data.parentId = parentBroadcastData.id;
       }
 
       // Build data.
@@ -173,7 +212,7 @@ AFRAME.registerSystem('firebase', {
         data[componentName] = getComputedAttribute(el, componentName);
       });
 
-      // Update entry.
+      // Broadcast data.
       database.child('entities/' + id).update(data);
     });
   }
@@ -182,7 +221,7 @@ AFRAME.registerSystem('firebase', {
 /**
  * Data holder for the scene.
  */
- 
+
 AFRAME.registerComponent('firebase', {
   schema: {
     apiKey: {type: 'string'},
@@ -199,18 +238,18 @@ AFRAME.registerComponent('firebase', {
  */
 AFRAME.registerComponent('firebase-broadcast', {
   schema: {
-    id: {default: ''},
+    id: {default: ''},  // Provided by Firebase.
     components: {default: ['position', 'rotation']},
-    componentsOnce: {default: [], type: 'array'}
+    componentsOnce: {default: [], type: 'array'},
+    shared: {default: false},
+    owner: {default: ''}
   },
 
   init: function () {
     var data = this.data;
     var el = this.el;
     var system = el.sceneEl.systems.firebase;
-    if (data.components.length) {
-      system.registerBroadcast(el);
-    }
+    if (data.components.length) { system.registerBroadcast(el); }
   }
 });
 
