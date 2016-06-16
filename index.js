@@ -128,24 +128,38 @@ AFRAME.registerSystem('firebase', {
    * Register.
    */
   registerBroadcast: function (el) {
-    var broadcastData = el.getComputedAttribute('firebase-broadcast');
+    var broadcastData = el.getAttribute('firebase-broadcast');
     var broadcastingEntities = this.broadcastingEntities;
     var database = this.database;
     var id = el.getAttribute('id');
-    broadcastingEntities[id] = el;
 
-    // Check if entity is owned by another client.
-    if (broadcastData.shared) {
-      var upstreamEntity = database.child('entities').orderByChild('id').equalTo(id);
-      if (upstreamEntity.owner) { return; }
-    }
+    // Look up entity in Firebase first (in case of shared objects).
+    database.child('entities/' + id).once('value', function (data) {
+      var upstreamEntity = data.val();
 
-    // Initialize entry, get assigned a Firebase ID.
-    var id = database.child('entities').push().key;
-    el.setAttribute('firebase-broadcast', 'id', id);
+      if (upstreamEntity) {
+        // Entity found. Update ID.
+        el.setAttribute('firebase-broadcast', 'id', upstreamEntity.id);
+        if (!upstreamEntity.shared || !upstreamEntity.owner) {
+          createEntity();
+        }
+      } else {
+        createEntity();
+      }
 
-    // Remove entry when client disconnects if not shared.
-    database.child('entities').child(id).onDisconnect().remove();
+      broadcastingEntities[id] = el;
+
+      function createEntity () {
+        // Create entity in Firebase, get assigned a Firebase ID.
+        var id = database.child('entities').push().key;
+        el.setAttribute('firebase-broadcast', 'id', id);
+
+        if (!el.getComputedAttribute('firebase-broadcast').shared) {
+          // Set up to remove entry when client disconnects if not shared.
+          database.child('entities').child(id).onDisconnect().remove();
+        }
+      }
+    });
   },
 
   /**
@@ -170,10 +184,10 @@ AFRAME.registerSystem('firebase', {
       var data = {};
 
       // Keep track of explicit ID in case of shared objects.
-      data['id'] = el.getAttribute('id');
-      data['firebase-broadcast'] = {
-        shared: broadcastData.shared
-      };
+      if (broadcastData.shared) {
+        data['id'] = el.getAttribute('id');
+      }
+      data['firebase-broadcast'] = {shared: broadcastData.shared};
 
       // Check if shared entity is unclaimed. Take it if not.
       if (broadcastData.shared && !broadcastData.owner) {
