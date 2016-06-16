@@ -78,20 +78,14 @@ AFRAME.registerSystem('firebase', {
 
     // Get or create entity.
     var created;
-    var htmlId = data.id;
     var entity;
-    if (data['firebase-broadcast'].shared && htmlId) {
-      entity = this.sceneEl.querySelector('#' + htmlId);
+    if (data['firebase-broadcast'].shared === true && data.id) {
+      entity = this.sceneEl.querySelector('#' + data.id);
     } else {
       entity = document.createElement('a-entity');
       created = true;
     }
     this.entities[id] = entity;
-
-    // Parent node.
-    var parentId = data.parentId;
-    var parentEl = this.entities[parentId] || this.sceneEl;
-    delete data.parentId;
 
     // Components.
     Object.keys(data).forEach(function setComponent (componentName) {
@@ -100,9 +94,10 @@ AFRAME.registerSystem('firebase', {
       setAttribute(entity, componentName, data[componentName]);
     });
 
-    if (created) {
-      parentEl.appendChild(entity);
-    }
+    // Find parent node and append.
+    var parentEl = this.entities[data.parentId] || this.sceneEl;
+    delete data.parentId;
+    if (created) { parentEl.appendChild(entity); }
   },
 
   /**
@@ -130,30 +125,26 @@ AFRAME.registerSystem('firebase', {
   },
 
   /**
-   * Delete all broadcasting entities.
-   * (currently unused, handled by Firebase onDisconnect)
-   */
-  handleExit: function () {
-    var self = this;
-    Object.keys(this.broadcastingEntities).forEach(function (id) {
-      delete self.broadcastingEntities[id];
-      self.database.child('entities/' + id).remove();
-    });
-  },
-
-  /**
    * Register.
    */
   registerBroadcast: function (el) {
+    var broadcastData = el.getComputedAttribute('firebase-broadcast');
     var broadcastingEntities = this.broadcastingEntities;
     var database = this.database;
+    var id = el.getAttribute('id');
+    broadcastingEntities[id] = el;
+
+    // Check if entity is owned by another client.
+    if (broadcastData.shared) {
+      var upstreamEntity = database.child('entities').orderByChild('id').equalTo(id);
+      if (upstreamEntity.owner) { return; }
+    }
 
     // Initialize entry, get assigned a Firebase ID.
     var id = database.child('entities').push().key;
     el.setAttribute('firebase-broadcast', 'id', id);
-    broadcastingEntities[id] = el;
 
-    // Remove entry when client disconnects.
+    // Remove entry when client disconnects if not shared.
     database.child('entities').child(id).onDisconnect().remove();
   },
 
@@ -179,8 +170,8 @@ AFRAME.registerSystem('firebase', {
       var data = {};
 
       // Keep track of explicit ID in case of shared objects.
+      data['id'] = el.getAttribute('id');
       data['firebase-broadcast'] = {
-        id: el.getAttribute('id'),
         shared: broadcastData.shared
       };
 
@@ -219,7 +210,7 @@ AFRAME.registerSystem('firebase', {
 });
 
 /**
- * Data holder for the scene.
+ * Scene Firebase data.
  */
 
 AFRAME.registerComponent('firebase', {
@@ -234,7 +225,7 @@ AFRAME.registerComponent('firebase', {
 });
 
 /**
- * Broadcast.
+ * Entity broadcast data.
  */
 AFRAME.registerComponent('firebase-broadcast', {
   schema: {
