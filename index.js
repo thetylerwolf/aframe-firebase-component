@@ -8,11 +8,20 @@ if (typeof AFRAME === 'undefined') {
  * Firebase system.
  */
 AFRAME.registerSystem('firebase', {
+  schema: {
+    apiKey: {type: 'string'},
+    authDomain: {type: 'string'},
+    channel: {type: 'string'},
+    databaseURL: {type: 'string'},
+    interval: {type: 'number'},
+    storageBucket: {type: 'string'}
+  },
+
   init: function () {
     // Get config.
-    var config = this.sceneEl.getAttribute('firebase');  // No getComputedAttr before attach.
-    if (!(config instanceof Object)) { config = AFRAME.utils.styleParser.parse(config); }
-    if (!config) { return; }
+    var config = this.data;
+
+    if (!config.apiKey) { return; }
 
     this.broadcastingEntities = {};
     this.entities = {};
@@ -57,7 +66,7 @@ AFRAME.registerSystem('firebase', {
 
     // Components.
     Object.keys(data).forEach(function setComponent (componentName) {
-      setAttribute(entity, componentName, data[componentName]);
+      AFRAME.utils.entity.setComponentProperty(entity, componentName, data[componentName]);
     });
 
     parentEl.appendChild(entity);
@@ -135,26 +144,12 @@ AFRAME.registerSystem('firebase', {
 
       // Build data.
       components.forEach(function getData (componentName) {
-        data[componentName] = getComputedAttribute(el, componentName);
+        data[componentName] = AFRAME.utils.entity.getComponentProperty(el, componentName, '|');
       });
 
       // Update entry.
       firebaseWrapper.updateEntity(id, data);
     });
-  }
-});
-
-/**
- * Data holder for the scene.
- */
-AFRAME.registerComponent('firebase', {
-  schema: {
-    apiKey: {type: 'string'},
-    authDomain: {type: 'string'},
-    channel: {type: 'string'},
-    databaseURL: {type: 'string'},
-    interval: {type: 'number'},
-    storageBucket: {type: 'string'}
   }
 });
 
@@ -177,28 +172,3 @@ AFRAME.registerComponent('firebase-broadcast', {
     }
   }
 });
-
-/**
- * Get attribute that handles individual component properties.
- */
-function getComputedAttribute (el, attribute) {
-  // Handle individual component property.
-  var split = attribute.split('|');
-  if (split.length === 2) {
-    return el.getComputedAttribute(split[0])[split[1]];
-  }
-  return el.getComputedAttribute(attribute);
-}
-
-/**
- * Set attribute that handles individual component properties.
- */
-function setAttribute (el, attribute, value) {
-  // Handle individual component property.
-  var split = attribute.split('|');
-  if (split.length === 2) {
-    el.setAttribute(split[0], split[1], value);
-    return;
-  }
-  el.setAttribute(attribute, value);
-}

@@ -44,55 +44,44 @@
 /* 0 */
 /***/ function(module, exports, __webpack_require__) {
 
-	__webpack_require__(1);
-	var parse = __webpack_require__(3);
+	var FirebaseWrapper = __webpack_require__(1);
 
 	if (typeof AFRAME === 'undefined') {
 	  throw new Error('Component attempted to register before AFRAME was available.');
 	}
 
-	var channelQueryParam = parse(location.href, true).query['aframe-firebase-channel'];
-
 	/**
 	 * Firebase system.
 	 */
 	AFRAME.registerSystem('firebase', {
+	  schema: {
+	    apiKey: {type: 'string'},
+	    authDomain: {type: 'string'},
+	    channel: {type: 'string'},
+	    databaseURL: {type: 'string'},
+	    interval: {type: 'number'},
+	    storageBucket: {type: 'string'}
+	  },
+
 	  init: function () {
-	    var sceneEl = this.sceneEl;
-	    // Cannot use getComputedAttribute since component not yet attached,
-	    // so set property defaults in this method instead of in schema.
-	    var config = sceneEl.getAttribute('firebase');
-	    var self = this;
+	    // Get config.
+	    var config = this.data;
 
-	    if (!(config instanceof Object)) {
-	      config = AFRAME.utils.styleParser.parse(config);
-	    }
-
-	    if (!config) { return; }
-
-	    this.channel = channelQueryParam || config.channel || 'default';
-	    this.firebase = firebase.initializeApp(config);
-	    var database = this.database = firebase.database().ref(this.channel);
+	    if (!config.apiKey) { return; }
 
 	    this.broadcastingEntities = {};
 	    this.entities = {};
 	    this.interval = config.interval || 10;
 
-	    database.child('entities').once('value', function (snapshot) {
-	      self.handleInitialSync(snapshot.val() || {});
-	    });
-
-	    database.child('entities').on('child_added', function (data) {
-	      self.handleEntityAdded(data.key, data.val());
-	    });
-
-	    database.child('entities').on('child_changed', function (data) {
-	      self.handleEntityChanged(data.key, data.val());
-	    });
-
-	    database.child('entities').on('child_removed', function (data) {
-	      self.handleEntityRemoved(data.key);
-	    });
+	    // Set up Firebase.
+	    var firebaseWrapper = this.firebaseWrapper = new FirebaseWrapper();
+	    firebaseWrapper.init(config);
+	    this.firebase = firebaseWrapper.firebase;
+	    this.database = firebaseWrapper.database;
+	    firebaseWrapper.getAllEntities().then(this.handleInitialSync.bind(this));
+	    firebaseWrapper.onEntityAdded(this.handleEntityAdded.bind(this));
+	    firebaseWrapper.onEntityChanged(this.handleEntityChanged.bind(this));
+	    firebaseWrapper.onEntityRemoved(this.handleEntityRemoved.bind(this));
 	  },
 
 	  /**
@@ -102,7 +91,6 @@
 	    var self = this;
 	    var broadcastingEntities = this.broadcastingEntities;
 	    Object.keys(data).forEach(function (entityId) {
-	      if (broadcastingEntities[entityId]) { return; }
 	      self.handleEntityAdded(entityId, data[entityId]);
 	    });
 	  },
@@ -124,8 +112,7 @@
 
 	    // Components.
 	    Object.keys(data).forEach(function setComponent (componentName) {
-	      if (componentName === 'parentId') { return; }
-	      setAttribute(entity, componentName, data[componentName]);
+	      AFRAME.utils.entity.setComponentProperty(entity, componentName, data[componentName]);
 	    });
 
 	    parentEl.appendChild(entity);
@@ -156,31 +143,18 @@
 	  },
 
 	  /**
-	   * Delete all broadcasting entities.
-	   * (currently unused, handled by Firebase onDisconnect)
-	   */
-	  handleExit: function () {
-	    var self = this;
-	    Object.keys(this.broadcastingEntities).forEach(function (id) {
-	      delete self.broadcastingEntities[id];
-	      self.database.child('entities/' + id).remove();
-	    });
-	  },
-
-	  /**
 	   * Register.
 	   */
 	  registerBroadcast: function (el) {
 	    var broadcastingEntities = this.broadcastingEntities;
-	    var database = this.database;
 
 	    // Initialize entry, get assigned a Firebase ID.
-	    var id = database.child('entities').push().key;
+	    var id = this.firebaseWrapper.createEntity();
 	    el.setAttribute('firebase-broadcast', 'id', id);
 	    broadcastingEntities[id] = el;
 
 	    // Remove entry when client disconnects.
-	    database.child('entities').child(id).onDisconnect().remove();
+	    this.firebaseWrapper.removeEntityOnDisconnect(id);
 	  },
 
 	  /**
@@ -190,7 +164,7 @@
 	    if (!this.firebase) { return; }
 
 	    var broadcastingEntities = this.broadcastingEntities;
-	    var database = this.database;
+	    var firebaseWrapper = this.firebaseWrapper;
 	    var sceneEl = this.sceneEl;
 
 	    if (time - this.time < this.interval) { return; }
@@ -216,27 +190,12 @@
 
 	      // Build data.
 	      components.forEach(function getData (componentName) {
-	        data[componentName] = getComputedAttribute(el, componentName);
+	        data[componentName] = AFRAME.utils.entity.getComponentProperty(el, componentName, '|');
 	      });
 
 	      // Update entry.
-	      database.child('entities/' + id).update(data);
+	      firebaseWrapper.updateEntity(id, data);
 	    });
-	  }
-	});
-
-	/**
-	 * Data holder for the scene.
-	 */
-	 
-	AFRAME.registerComponent('firebase', {
-	  schema: {
-	    apiKey: {type: 'string'},
-	    authDomain: {type: 'string'},
-	    channel: {type: 'string'},
-	    databaseURL: {type: 'string'},
-	    interval: {type: 'number'},
-	    storageBucket: {type: 'string'}
 	  }
 	});
 
@@ -260,34 +219,68 @@
 	  }
 	});
 
-	/**
-	 * Get attribute that handles individual component properties.
-	 */
-	function getComputedAttribute (el, attribute) {
-	  // Handle individual component property.
-	  var split = attribute.split('|');
-	  if (split.length === 2) {
-	    return el.getComputedAttribute(split[0])[split[1]];
-	  }
-	  return el.getComputedAttribute(attribute);
-	}
-
-	/**
-	 * Set attribute that handles individual component properties.
-	 */
-	function setAttribute (el, attribute, value) {
-	  // Handle individual component property.
-	  var split = attribute.split('|');
-	  if (split.length === 2) {
-	    el.setAttribute(split[0], split[1], value);
-	    return;
-	  }
-	  el.setAttribute(attribute, value);
-	}
-
 
 /***/ },
 /* 1 */
+/***/ function(module, exports, __webpack_require__) {
+
+	__webpack_require__(2);
+	var parse = __webpack_require__(4);
+
+	var channelQueryParam = parse(location.href, true).query['aframe-firebase-channel'];
+
+	function FirebaseWrapper () { }
+
+	FirebaseWrapper.prototype.init = function (config) {
+	  this.channel = channelQueryParam || config.channel || 'default';
+	  this.firebase = firebase.initializeApp(config);
+	  this.database = firebase.database().ref(this.channel);
+	};
+
+	FirebaseWrapper.prototype.getAllEntities = function () {
+	  var database = this.database;
+	  return new Promise(function (resolve) {
+	    database.child('entities').once('value', function (snapshot) {
+	      resolve(snapshot.val() || {});
+	    });
+	  });
+	};
+
+	FirebaseWrapper.prototype.onEntityAdded = function (handler) {
+	  this.database.child('entities').on('child_added', function (data) {
+	    handler(data.key, data.val());
+	  });
+	};
+
+	FirebaseWrapper.prototype.onEntityChanged = function (handler) {
+	  this.database.child('entities').on('child_changed', function (data) {
+	    handler(data.key, data.val());
+	  });
+	};
+
+	FirebaseWrapper.prototype.onEntityRemoved = function (handler) {
+	  this.database.child('entities').on('child_removed', function (data) {
+	    handler(data.key);
+	  });
+	};
+
+	FirebaseWrapper.prototype.removeEntityOnDisconnect = function (id) {
+	  this.database.child('entities').child(id).onDisconnect().remove();
+	};
+
+	FirebaseWrapper.prototype.createEntity = function () {
+	  return this.database.child('entities').push().key;
+	};
+
+	FirebaseWrapper.prototype.updateEntity = function (id, data) {
+	  this.database.child('entities/' + id).update(data);
+	};
+
+	module.exports = FirebaseWrapper;
+
+
+/***/ },
+/* 2 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/**
@@ -297,12 +290,12 @@
 	 *
 	 *   firebase = require('firebase');
 	 */
-	__webpack_require__(2);
+	__webpack_require__(3);
 	module.exports = firebase;
 
 
 /***/ },
-/* 2 */
+/* 3 */
 /***/ function(module, exports) {
 
 	/* WEBPACK VAR INJECTION */(function(global) {/*! @license Firebase v3.0.5
@@ -874,14 +867,14 @@
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
 /***/ },
-/* 3 */
+/* 4 */
 /***/ function(module, exports, __webpack_require__) {
 
 	'use strict';
 
-	var required = __webpack_require__(4)
-	  , lolcation = __webpack_require__(5)
-	  , qs = __webpack_require__(6)
+	var required = __webpack_require__(5)
+	  , lolcation = __webpack_require__(6)
+	  , qs = __webpack_require__(7)
 	  , relativere = /^\/(?!\/)/
 	  , protocolre = /^([a-z0-9.+-]+:)?(\/\/)?(.*)$/i; // actual protocol is first match
 
@@ -1149,7 +1142,7 @@
 
 
 /***/ },
-/* 4 */
+/* 5 */
 /***/ function(module, exports) {
 
 	'use strict';
@@ -1193,7 +1186,7 @@
 
 
 /***/ },
-/* 5 */
+/* 6 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(global) {'use strict';
@@ -1225,7 +1218,7 @@
 	 */
 	module.exports = function lolcation(loc) {
 	  loc = loc || global.location || {};
-	  URL = URL || __webpack_require__(3);
+	  URL = URL || __webpack_require__(4);
 
 	  var finaldestination = {}
 	    , type = typeof loc
@@ -1253,7 +1246,7 @@
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
 /***/ },
-/* 6 */
+/* 7 */
 /***/ function(module, exports) {
 
 	'use strict';
