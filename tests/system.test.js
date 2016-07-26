@@ -2,6 +2,8 @@ var AFRAME = require('aframe');
 require('../index');
 var FirebaseWrapper = require('../firebaseWrapper');
 
+window.debug = true;
+
 /**
  * Tests rely on FirebaseWrapper, which abstracts away communicating with Firebase.
  * We use Sinon to stub and spy the FirebaseWrapper for testing the Firebase system.
@@ -10,31 +12,34 @@ var FirebaseWrapper = require('../firebaseWrapper');
  */
 suite('firebase system', function () {
   setup(function (done) {
-    var sceneEl = this.sceneEl = document.createElement('a-scene');
-    var system = this.system = sceneEl.systems.firebase;
     var sinon = this.sinon;
-
-    sceneEl.setAttribute('firebase',
-                         'apiKey: a; authDomain: b; databaseURL: c; storageBucket: d');
-    system.sceneEl = sceneEl;
-
     sinon.stub(FirebaseWrapper.prototype, 'init', function () {});
     sinon.stub(FirebaseWrapper.prototype, 'getAllEntities', function () {
-      return new Promise(function () {
-        resolve({});
-      });
+      return new Promise(function () { resolve({}); });
     });
     sinon.stub(FirebaseWrapper.prototype, 'onEntityAdded', function () {});
     sinon.stub(FirebaseWrapper.prototype, 'onEntityChanged', function () {});
     sinon.stub(FirebaseWrapper.prototype, 'onEntityRemoved', function () {});
 
-    document.body.appendChild(sceneEl);
+    var sceneEl = this.sceneEl = document.createElement('a-scene');
+    var system = this.system = sceneEl.systems.firebase;
+
+    sceneEl.setAttribute('firebase', {
+      apiKey: 'a',
+      authDomain: 'b',
+      databaseURL: 'c',
+      storageBucket: 'd'
+    });
+    sceneEl.systems.firebase.sceneEl = sceneEl;
+
     sceneEl.addEventListener('loaded', function () {
       done();
     });
+    document.body.appendChild(sceneEl);
   });
 
-  suite('init', function () {
+  // TODO: https://github.com/aframevr/aframe/pull/1670
+  suite.skip('init', function () {
     test('does not init Firebase without config', function () {
       var initSpy;
       var sceneEl = this.sceneEl;
@@ -181,10 +186,14 @@ suite('firebase system', function () {
       var sceneEl = this.sceneEl;
       var system = this.system;
 
+      var parentEl = document.createElement('a-entity');
+      parentEl.setAttribute('id', 'entity-B');
+      sceneEl.appendChild(parentEl);
+
       system.init();
       system.handleEntityAdded('entity:a', {
         id: 'entity-A',
-        parentId: 'xxx'
+        parentId: 'entity-B'
       });
 
       setTimeout(function () {
