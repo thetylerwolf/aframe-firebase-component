@@ -1,5 +1,7 @@
 ## aframe-firebase-component
 
+> Use v0.2.0 if using A-Frame v0.2.0.
+
 > Learn [how to get started with Firebase](https://firebase.google.com/docs/web/setup).
 
 A Firebase component for [A-Frame](https://aframe.io).
@@ -31,17 +33,17 @@ instances/rooms of the same app, to share one Firebase bucket. If no channel is
 given, 'default' is used. The channel name can also be specified in the URL:
 `mysite.com?aframe-firebase-channel=oahu`
 
-The optional `interval` sets how often (in milliseconds) data is sent to Firebase. 
+The optional `interval` sets how often (in milliseconds) data is sent to Firebase.
 Default interval is 10 milliseconds.
 
-| Property      | Description                     | Required 
-| --------      | -----------                     | -------- 
-| apiKey        | API key for Firebase.           | yes      
-| authDomain    | Firebase authentication domain. | yes       
-| channel       | Name of room/namespace.         | no       
-| databaseURL   | Firebase database URL.          | yes      
-| interval      | Milliseconds between broadcasts.| no      
-| storageBucket | Firebase storage bucket URL.    | yes     
+| Property      | Description                     | Required
+| --------      | -----------                     | --------
+| apiKey        | API key for Firebase.           | yes
+| authDomain    | Firebase authentication domain. | yes
+| channel       | Name of room/namespace.         | no
+| databaseURL   | Firebase database URL.          | yes
+| interval      | Milliseconds between broadcasts.| no
+| storageBucket | Firebase storage bucket URL.    | yes
 
 
 #### firebase-broadcast
