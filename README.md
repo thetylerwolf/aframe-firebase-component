@@ -1,7 +1,5 @@
 ## aframe-firebase-component
 
-> Use v0.2.0 if using A-Frame v0.2.0.
-
 > Learn [how to get started with Firebase](https://firebase.google.com/docs/web/setup).
 
 A Firebase component for [A-Frame](https://aframe.io).
@@ -86,7 +84,7 @@ Install and use by directly including the [browser files](dist):
 ```html
 <head>
   <title>My A-Frame Scene</title>
-  <script src="https://aframe.io/releases/0.2.0/aframe.min.js"></script>
+  <script src="https://aframe.io/releases/0.3.0/aframe.min.js"></script>
   <script src="https://rawgit.com/ngokevin/aframe-firebase-component/master/dist/aframe-firebase-component.min.js"></script>
 </head>
 
