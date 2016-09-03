@@ -23,12 +23,13 @@
       <a-entity id="head" mixin="avatar-head"
                 camera look-controls wasd-controls
                 random-position="min: -10 1.7 -10; max: 10 1.9 10"
-                firebase-broadcast="components: mixin, position, rotation"></a-entity>
+                firebase-broadcast="componentsOnce: mixin;
+                                    components: position, rotation"></a-entity>
 
       <!-- Synced avatar body. -->
       <a-entity id="body" firebase-broadcast="components: position" follow="[camera]">
         <a-entity mixin="avatar-body"
-                  firebase-broadcast="components: mixin, position"
+                  firebase-broadcast="componentsOnce: mixin; components: position"
                   position="0 -1 0"></a-entity>
       </a-entity>
 
