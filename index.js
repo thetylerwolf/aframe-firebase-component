@@ -157,7 +157,7 @@ AFRAME.registerSystem('firebase', {
       if (el.parentNode !== sceneEl) {
         var broadcastData = el.parentNode.getAttribute('firebase-broadcast');
         if (!broadcastData) { return; }  // Wait for parent to initialize.
-        data.parentId = broadcastData.id;
+        data.parentId = broadcastData.id || null;
       }
 
       // Build data.
